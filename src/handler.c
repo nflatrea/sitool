@@ -121,9 +121,11 @@ void handler_list_print(void)
 
 	Lua Bindings
 
-	sitool.send(hex_string) 			Send hex bytes
+	sitool.send(payload_string) 		Send payload (hex, ASCII, or mixed)
 	sitool.utils.btoh(raw_string)		Bytes to Hex
 	sitool.utils.htob(hex_string)		Hex to Bytes
+	sitool.utils.atob(ascii_string)		ASCII to Bytes
+	sitool.utils.btoa(raw_string)		Bytes to printable ASCII
 	sitool.utils.hex(raw_string)		Hexdump
 
     H.callbacks.<name>() 				Call <name> if it exists
@@ -140,11 +142,12 @@ static sitool_t *get_st(lua_State *L)
     return st;
 }
 
-/* sitool.send(hex_string), await response*/
+/* sitool.send(payload_string), await response
+   payload can be hex ("AA BB CC") or mixed hex+ASCII ("02 10 \"HELLO\"") */
 static int l_send(lua_State *L)
 {
     sitool_t *st = get_st(L);
-    const char *hexstr = luaL_checkstring(L, 1);
+    const char *payload = luaL_checkstring(L, 1);
 
     if (st->fd < 0) {
         lua_pushnil(L);
@@ -153,9 +156,9 @@ static int l_send(lua_State *L)
     }
 
     unsigned char txbuf[256];
-    int txlen = htob(hexstr, txbuf, sizeof txbuf);
+    int txlen = parse_payload(payload, txbuf, sizeof txbuf);
     if (txlen <= 0) {
-        luaL_error(L, "sitool.send: invalid hex string");
+        luaL_error(L, "sitool.send: invalid payload");
         return 0;
     }
 
@@ -245,6 +248,36 @@ static int l_utils_hexdump(lua_State *L)
     return 1;
 }
 
+/* sitool.utils.atob(ascii_string) -> raw bytes */
+static int l_utils_atob(lua_State *L)
+{
+    size_t len;
+    const char *ascii = luaL_checklstring(L, 1, &len);
+    unsigned char out[256];
+    int n = atob(ascii, len, out, sizeof out);
+    if (n < 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushlstring(L, (const char *)out, n);
+    return 1;
+}
+
+/* sitool.utils.btoa(raw_string) -> printable ASCII (non-printable -> '.') */
+static int l_utils_btoa(lua_State *L)
+{
+    size_t len;
+    const char *raw = luaL_checklstring(L, 1, &len);
+    char out[768];
+    int n = btoa((const unsigned char *)raw, len, out, sizeof out);
+    if (n < 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushstring(L, out);
+    return 1;
+}
+
 /* global printf(fmt, ...) */
 static int l_printf(lua_State *L)
 {
@@ -284,6 +317,10 @@ static void register_api(lua_State *L, sitool_t *st)
     lua_setfield(L, -2, "btoh");
     lua_pushcfunction(L, l_utils_htob);
     lua_setfield(L, -2, "htob");
+    lua_pushcfunction(L, l_utils_atob);
+    lua_setfield(L, -2, "atob");
+    lua_pushcfunction(L, l_utils_btoa);
+    lua_setfield(L, -2, "btoa");
     lua_pushcfunction(L, l_utils_hexdump);
     lua_setfield(L, -2, "hex");
     lua_setfield(L, -2, "utils");

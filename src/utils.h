@@ -8,6 +8,9 @@
 static inline int hexnib(unsigned char);
 static inline int htob(const char*, unsigned char*,size_t);
 static inline int btoh(const unsigned char*, size_t, char*, size_t, char, int);
+static inline int atob(const char*, size_t, unsigned char*, size_t);
+static inline int btoa(const unsigned char*, size_t, char*, size_t);
+static inline int parse_payload(const char*, unsigned char*, size_t);
 static inline int parse_args(char*, char**);
 
 static inline int hexnib(unsigned char c)
@@ -56,20 +59,98 @@ size_t len, char *out,size_t max, char sep, int upper)
     return (int)pos;
 }         
 
+static inline int atob(const char *ascii, size_t len,
+                       unsigned char *out, size_t max)
+{
+    if (len > max) return -1;
+    memcpy(out, ascii, len);
+    return (int)len;
+}
+
+static inline int btoa(const unsigned char *in, size_t len,
+                       char *out, size_t max)
+{
+    if (max < len + 1) return -1;
+    for (size_t i = 0; i < len; i++)
+        out[i] = (in[i] >= 0x20 && in[i] <= 0x7E)
+               ? (char)in[i] : '.';
+    out[len] = '\0';
+    return (int)len;
+}
+
+static inline int parse_payload(const char *input,
+                                unsigned char *out, size_t max)
+{
+    size_t n = 0;
+    const char *p = input;
+
+    while (*p)
+    {
+        /* skip separators */
+        while (*p == ' ' || *p == '\t' || *p == ':') p++;
+        if (*p == '\0') break;
+
+        /* quoted ASCII segment */
+        if (*p == '"')
+        {
+            p++; /* skip opening quote */
+            while (*p && *p != '"')
+            {
+                if (n >= max) return -1;
+                out[n++] = (unsigned char)*p++;
+            }
+            if (*p == '"') p++; /* skip closing quote */
+            else return -1;    /* unterminated quote */
+            continue;
+        }
+
+        /* hex byte */
+        int hi = hexnib((unsigned char)*p);
+        if (hi < 0) return -1;
+        p++;
+        if (*p == '\0') return -1; /* odd nibble */
+        int lo = hexnib((unsigned char)*p);
+        if (lo < 0) return -1;
+        p++;
+        if (n >= max) return -1;
+        out[n++] = (unsigned char)((hi << 4) | lo);
+    }
+    return (int)n;
+}
+
 static inline int parse_args(char *str, char **argv)
 {
-    char *saveptr = NULL;
-    char *token;
     int argc = 0;
 
     if (str == NULL || argv == NULL) return 0;
 
-    token = strtok_r(str, " \t\n", &saveptr);
-    while (token != NULL) {
-        argv[argc++] = token;
-        token = strtok_r(NULL, " \t\n", &saveptr);
+    char *p = str;
+    while (*p)
+    {
+        /* skip leading whitespace */
+        while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+        if (*p == '\0') break;
+
+        if (*p == '"')
+        {
+            /* quoted token: keep the quotes in the token */
+            argv[argc++] = p;
+            p++; /* skip opening quote */
+            while (*p && *p != '"') p++;
+            if (*p == '"') p++; /* skip closing quote */
+            /* terminate token if followed by whitespace */
+            if (*p == ' ' || *p == '\t' || *p == '\n')
+                *p++ = '\0';
+        }
+        else
+        {
+            /* normal unquoted token */
+            argv[argc++] = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\n') p++;
+            if (*p) *p++ = '\0';
+        }
     }
-    argv[argc] = NULL; /* optional: make argv NULL-terminated like execv */
+    argv[argc] = NULL;
     return argc;
 }
 

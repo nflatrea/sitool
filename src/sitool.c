@@ -26,7 +26,7 @@ static cmd_entry_t commands[] = {
     { "close", "Close serial connection",              		   cmd__close },
     { "set",   "Set attribute  (set key value)",       		   cmd__set   },
     { "get",   "Get attribute  (get key)",             		   cmd__get   },
-    { "raw",   "Send raw hex   (raw AA BB CC DD ...)", 		   cmd__raw   },
+    { "raw",   "Send raw payload (raw AA BB \"TXT\" ...)",    cmd__raw   },
     { "use",   "Load handler (use <name> | list | none)", 	   cmd__use   },
     { NULL, NULL, NULL }
 };
@@ -223,24 +223,27 @@ static int cmd__raw(sitool_t *st, int argc, char **argv)
 
     if (argc < 2) {
         printf("usage: raw AA BB CC DD ...\n");
+        printf("       raw \"HELLO\"            (ASCII)\n");
+        printf("       raw 02 10 \"HELLO\" FF   (mixed)\n");
         return 0;
     }
 
-    char hexbuf[512];
+    /* rebuild the payload string from argv, preserving quoted tokens */
+    char payload[512];
     size_t pos = 0;
-    for (int i = 1; i < argc && pos < sizeof hexbuf - 3; i++) {
-        if (i > 1) hexbuf[pos++] = ' ';
+    for (int i = 1; i < argc && pos < sizeof payload - 3; i++) {
+        if (i > 1) payload[pos++] = ' ';
         size_t slen = strlen(argv[i]);
-        if (pos + slen >= sizeof hexbuf) break;
-        memcpy(hexbuf + pos, argv[i], slen);
+        if (pos + slen >= sizeof payload) break;
+        memcpy(payload + pos, argv[i], slen);
         pos += slen;
     }
-    hexbuf[pos] = '\0';
+    payload[pos] = '\0';
 
     unsigned char raw[256];
-    int n = htob(hexbuf, raw, sizeof raw);
+    int n = parse_payload(payload, raw, sizeof raw);
     if (n <= 0) {
-        printf("error: invalid hex data\n");
+        printf("error: invalid payload\n");
         return 0;
     }
 
