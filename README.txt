@@ -41,7 +41,7 @@ sitool> help
   close      Close serial connection
   set        Set attribute  (set key value)
   get        Get attribute  (get key)
-  raw        Send raw hex   (raw AA BB CC DD ...)
+  raw        Send raw payload (raw AA BB "TXT" ...)
   use        Load handler (use <name> | list | none)
 
   Attributes: baudrate, databits, parity, stopbits, port
