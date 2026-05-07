@@ -4,12 +4,22 @@
 #include <termios.h>
 #include <stddef.h>
 
+#define SERIAL_DEV_MAX 64
+
+typedef struct
+{
+    char path[128];
+
+} serial_dev_t;
+
 speed_t serial_i2speed(int baud);
 int 	serial_open(const char *port);
 void 	serial_close(int fd);
 int 	serial_config(int fd, int baud, int databits, char parity, int stopbits);
 int 	serial_write(int fd, const void *buf, size_t len);
 int 	serial_read(int fd, void *buf, size_t len);
+int 	serial_poll(int fd, void *buf, size_t len, int timeout_ms);
+int 	serial_list(serial_dev_t *list, int max);
 
 /*
 
@@ -47,7 +57,19 @@ serial_write
 serial_read
 
   Read up to `len` bytes into `buf` from the serial port.
+  Blocks until data arrives or timeout (VTIME).
   Returns number of bytes read, 0 on timeout, or -1 on error.
+
+serial_poll
+
+  Non-blocking read: poll for data with a timeout in milliseconds.
+  Returns number of bytes read, 0 if nothing available, or -1 on error.
+
+serial_list
+
+  List available serial devices (e.g. /dev/ttyUSB*, /dev/ttyACM*).
+  Fills `list` with up to `max` entries.
+  Returns the number of devices found.
 
 */
 

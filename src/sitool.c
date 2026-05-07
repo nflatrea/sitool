@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <libgen.h>
+#include <unistd.h>
+#include <poll.h>
+#include <termios.h>
 #include <readline/readline.h>
 #include <readline/history.h>
 
@@ -18,6 +21,8 @@ static int cmd__set(sitool_t*, int, char**);
 static int cmd__get(sitool_t*, int, char**);
 static int cmd__raw(sitool_t*, int, char**);
 static int cmd__use(sitool_t*, int, char**);
+static int cmd__list(sitool_t*, int, char**);
+static int cmd__term(sitool_t*, int, char**);
 
 static cmd_entry_t commands[] = {
     { "help",  "Display help",                         		   cmd__help  },
@@ -25,9 +30,11 @@ static cmd_entry_t commands[] = {
     { "open",  "Open serial connection (ex. open /ttyUSB0)",   cmd__open  },
     { "close", "Close serial connection",              		   cmd__close },
     { "set",   "Set attribute  (set key value)",       		   cmd__set   },
-    { "get",   "Get attribute  (get key)",             		   cmd__get   },
+    { "get",   "Get attribute  (get key | get all)",           cmd__get   },
     { "raw",   "Send raw payload (raw AA BB \"TXT\" ...)",    cmd__raw   },
-    { "use",   "Load handler (use <name> | list | none)", 	   cmd__use   },
+    { "use",   "Load handler (use <name> | none)",             cmd__use   },
+    { "list",  "List resources (list handlers | list devices)",cmd__list  },
+    { "term",  "Raw terminal (Ctrl-] to quit)",                cmd__term  },
     { NULL, NULL, NULL }
 };
 
@@ -60,7 +67,7 @@ static int cmd__help(sitool_t *st, int argc, char **argv)
     (void)argc; (void)argv;
     for (cmd_entry_t *e = commands; e->name; ++e)
         printf("  %-10s %s\n", e->name, e->help);
-    printf("\n  Attributes: baudrate, databits, parity, stopbits, port\n");
+    printf("\n  Attributes: baudrate, databits, parity, stopbits, port, echo\n");
 
     handler_help(st);
     printf("\n");
@@ -110,6 +117,17 @@ static int cmd__open(sitool_t *st, int argc, char **argv)
         serial_close(st->fd);
         st->fd = -1;
         return 0;
+    }
+
+    /* guard: re-ensure stdout has sane output processing
+       (opening/configuring a pty can corrupt terminal state
+        on some multiplexers) */
+    if (isatty(STDOUT_FILENO)) {
+        struct termios tout;
+        if (tcgetattr(STDOUT_FILENO, &tout) == 0) {
+            tout.c_oflag |= OPOST | ONLCR;
+            tcsetattr(STDOUT_FILENO, TCSANOW, &tout);
+        }
     }
 
     printf("opened %s @ %d %d%c%d\n",
@@ -175,6 +193,15 @@ static int cmd__set(sitool_t *st, int argc, char **argv)
             return 0;
         }
         st->stopbits = s;
+    } else if (strcmp(key, "echo") == 0) {
+        if (strcmp(val, "on") == 0 || strcmp(val, "1") == 0)
+            st->echo = 1;
+        else if (strcmp(val, "off") == 0 || strcmp(val, "0") == 0)
+            st->echo = 0;
+        else {
+            printf("error: echo must be on or off\n");
+            return 0;
+        }
     } else {
         printf("unknown attribute: %s\n", key);
     }
@@ -184,17 +211,23 @@ static int cmd__set(sitool_t *st, int argc, char **argv)
 static int cmd__get(sitool_t *st, int argc, char **argv)
 {
     if (argc < 2) {
+        printf("usage: get <key> | get all\n");
+        return 0;
+    }
+
+    const char *key = argv[1];
+
+    if (strcmp(key, "all") == 0) {
         printf("  port      %s\n", st->port[0] ? st->port : "(not set)");
         printf("  baudrate  %d\n", st->baudrate);
         printf("  databits  %d\n", st->databits);
         printf("  parity    %c\n", st->parity);
         printf("  stopbits  %d\n", st->stopbits);
+        printf("  echo      %s\n", st->echo ? "on" : "off");
         printf("  fd        %d\n", st->fd);
         printf("  handler   %s\n", st->handler[0] ? st->handler : "(none)");
         return 0;
     }
-
-    const char *key = argv[1];
 
     if (strcmp(key, "port") == 0)
         printf("%s\n", st->port[0] ? st->port : "(not set)");
@@ -206,6 +239,8 @@ static int cmd__get(sitool_t *st, int argc, char **argv)
         printf("%c\n", st->parity);
     else if (strcmp(key, "stopbits") == 0)
         printf("%d\n", st->stopbits);
+    else if (strcmp(key, "echo") == 0)
+        printf("%s\n", st->echo ? "on" : "off");
     else if (strcmp(key, "handler") == 0)
         printf("%s\n", st->handler[0] ? st->handler : "(none)");
     else
@@ -270,7 +305,7 @@ static int cmd__use(sitool_t *st, int argc, char **argv)
             printf("handler: %s\n", st->handler);
         else
             printf("no handler loaded\n");
-        printf("usage: use <name> | list | none\n");
+        printf("usage: use <name> | none\n");
         return 0;
     }
 
@@ -285,17 +320,124 @@ static int cmd__use(sitool_t *st, int argc, char **argv)
         return 0;
     }
 
-    if (strcmp(argv[1], "list") == 0) {
-        printf("Available handlers:\n");
-        handler_list_print();
-        return 0;
-    }
-
     if (handler_load(st, argv[1]) < 0) {
         printf("error: could not load handler '%s'\n", argv[1]);
     } else {
         prompt_rebuild(st);
     }
+    return 0;
+}
+
+
+static int cmd__list(sitool_t *st, int argc, char **argv)
+{
+    (void)st;
+
+    if (argc < 2) {
+        printf("usage: list handlers | list devices\n");
+        return 0;
+    }
+
+    if (strcmp(argv[1], "handlers") == 0) {
+        printf("Available handlers:\n");
+        handler_list_print();
+        return 0;
+    }
+
+    if (strcmp(argv[1], "devices") == 0) {
+        serial_dev_t devs[SERIAL_DEV_MAX];
+        int n = serial_list(devs, SERIAL_DEV_MAX);
+        if (n == 0) {
+            printf("  (no serial devices found)\n");
+            return 0;
+        }
+        printf("Available serial devices:\n");
+        for (int i = 0; i < n; i++)
+            printf("  %s\n", devs[i].path);
+        return 0;
+    }
+
+    printf("unknown: list %s\n", argv[1]);
+    printf("usage: list handlers | list devices\n");
+    return 0;
+}
+
+static int cmd__term(sitool_t *st, int argc, char **argv)
+{
+    (void)argc; (void)argv;
+
+    if (st->fd < 0) {
+        printf("error: not connected (use: open)\n");
+        return 0;
+    }
+
+    struct termios orig;
+    if (tcgetattr(STDIN_FILENO, &orig) != 0) {
+        printf("error: tcgetattr failed\n");
+        return 0;
+    }
+
+    struct termios raw = orig;
+    raw.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+    raw.c_iflag &= ~(IXON | IXOFF | ICRNL | INLCR);
+    raw.c_oflag &= ~OPOST;
+    raw.c_cc[VMIN]  = 1;
+    raw.c_cc[VTIME] = 0;
+    tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+
+    printf("\r\n--- term (%s @ %d %d%c%d) | echo %s | Ctrl-] to quit ---\r\n",
+           st->port, st->baudrate, st->databits, st->parity, st->stopbits,
+           st->echo ? "on" : "off");
+
+    struct pollfd fds[2];
+    fds[0].fd     = STDIN_FILENO;
+    fds[0].events = POLLIN;
+    fds[1].fd     = st->fd;
+    fds[1].events = POLLIN;
+
+    int running = 1;
+    ssize_t wr;
+
+    while (running) {
+        int ret = poll(fds, 2, -1);
+        if (ret < 0) break;
+
+        /* serial -> stdout */
+        if (fds[1].revents & POLLIN) {
+            unsigned char buf[256];
+            ssize_t n = read(st->fd, buf, sizeof buf);
+            if (n > 0)
+                wr = write(STDOUT_FILENO, buf, n);
+            else if (n == 0)
+                break;
+        }
+
+        /* stdin -> serial */
+        if (fds[0].revents & POLLIN) {
+            unsigned char c;
+            ssize_t n = read(STDIN_FILENO, &c, 1);
+            if (n <= 0) break;
+
+            if (c == 0x1D) { /* Ctrl-] */
+                running = 0;
+                break;
+            }
+
+            wr = write(st->fd, &c, 1);
+            if (st->echo)
+                wr = write(STDOUT_FILENO, &c, 1);
+        }
+
+        if ((fds[1].revents & (POLLHUP | POLLERR)) ||
+            (fds[0].revents & (POLLHUP | POLLERR)))
+            break;
+    }
+
+    (void)wr;
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &orig);
+    printf("\r\n--- term closed ---\r\n");
+
     return 0;
 }
 
@@ -309,6 +451,7 @@ void sitool_init(sitool_t *st)
     st->databits = 8;
     st->parity   = 'N';
     st->stopbits = 1;
+    st->echo     = 0;
     st->L        = NULL;
     prompt_rebuild(st);
 }

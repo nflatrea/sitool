@@ -3,7 +3,7 @@
 
 #include <lua.h>
 
-#define SITOOL_VERSION "v2.0.052026"
+#define SITOOL_VERSION "v2.2.052026"
 
 typedef struct sitool sitool_t;
 
@@ -28,6 +28,7 @@ struct sitool
     int  databits;
     char parity;
     int  stopbits;
+    int  echo; 		// local echo in term mode: 0=off, 1=on
 
     /* lua handler */
     lua_State *L;

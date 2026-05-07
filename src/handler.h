@@ -25,6 +25,10 @@ int  handler_dispatch(sitool_t *st, const char *cmd,
 void handler_help(sitool_t *st);
 int  handler_send_raw(sitool_t *st, const unsigned char 
 	 *data, int len, unsigned char *resp, int resp_max);
+int  handler_write(sitool_t *st, const unsigned char
+	 *data, int len);
+int  handler_poll(sitool_t *st, unsigned char *buf,
+	 int max, int timeout_ms);
 
 /*
 
@@ -69,6 +73,15 @@ handler_help
 handler_send_raw
 
   Send raw bytes and receive response (used by Lua bindings).
+
+handler_write
+
+  Write raw bytes without waiting for response.
+
+handler_poll
+
+  Non-blocking read with timeout in milliseconds.
+  Returns number of bytes read, 0 if nothing, -1 on error.
 
 */
 

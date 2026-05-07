@@ -4,6 +4,9 @@
 #include <dirent.h>
 #include <unistd.h>
 
+#include <readline/readline.h>
+#include <readline/history.h>
+
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -58,7 +61,6 @@ static int scan_dir(const char *dirpath, handler_info_t *list,
     while ((ent = readdir(d)) != NULL && count < max) {
         const char *fname = ent->d_name;
         size_t len = strlen(fname);
-
 
 		// take the filename without extention
         if (len < 5 || strcmp(fname + len - 4, ".lua") != 0)
@@ -121,7 +123,10 @@ void handler_list_print(void)
 
 	Lua Bindings
 
-	sitool.send(payload_string) 		Send payload (hex, ASCII, or mixed)
+	sitool.send(payload_string) 		Send payload and await response (sync)
+	sitool.write(payload_string)		Send payload without waiting for response
+	sitool.read()						Blocking read (uses VTIME timeout)
+	sitool.poll([timeout_ms])			Non-blocking read with optional timeout
 	sitool.utils.btoh(raw_string)		Bytes to Hex
 	sitool.utils.htob(hex_string)		Hex to Bytes
 	sitool.utils.atob(ascii_string)		ASCII to Bytes
@@ -142,8 +147,6 @@ static sitool_t *get_st(lua_State *L)
     return st;
 }
 
-/* sitool.send(payload_string), await response
-   payload can be hex ("AA BB CC") or mixed hex+ASCII ("02 10 \"HELLO\"") */
 static int l_send(lua_State *L)
 {
     sitool_t *st = get_st(L);
@@ -183,7 +186,86 @@ static int l_send(lua_State *L)
     return 2;
 }
 
-/* sitool.utils.btoh(raw_string) */
+static int l_write(lua_State *L)
+{
+    sitool_t *st = get_st(L);
+    const char *payload = luaL_checkstring(L, 1);
+
+    if (st->fd < 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    unsigned char txbuf[256];
+    int txlen = parse_payload(payload, txbuf, sizeof txbuf);
+    if (txlen <= 0) {
+        luaL_error(L, "sitool.write: invalid payload");
+        return 0;
+    }
+
+    int w = handler_write(st, txbuf, txlen);
+    if (w < 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    lua_pushinteger(L, w);
+    return 1;
+}
+
+static int l_read(lua_State *L)
+{
+    sitool_t *st = get_st(L);
+
+    if (st->fd < 0) {
+        lua_pushnil(L);
+        lua_pushnil(L);
+        return 2;
+    }
+
+    unsigned char rxbuf[256];
+    int rxlen = serial_read(st->fd, rxbuf, sizeof rxbuf);
+
+    if (rxlen > 0) {
+        char disp[768];
+        btoh(rxbuf, rxlen, disp, sizeof disp, ' ', 1);
+        lua_pushstring(L, disp);
+        lua_pushlstring(L, (const char *)rxbuf, rxlen);
+        return 2;
+    }
+
+    lua_pushnil(L);
+    lua_pushnil(L);
+    return 2;
+}
+
+static int l_poll(lua_State *L)
+{
+    sitool_t *st = get_st(L);
+    int timeout_ms = (int)luaL_optinteger(L, 1, 0);
+
+    if (st->fd < 0) {
+        lua_pushnil(L);
+        lua_pushnil(L);
+        return 2;
+    }
+
+    unsigned char rxbuf[256];
+    int rxlen = handler_poll(st, rxbuf, sizeof rxbuf, timeout_ms);
+
+    if (rxlen > 0) {
+        char disp[768];
+        btoh(rxbuf, rxlen, disp, sizeof disp, ' ', 1);
+        lua_pushstring(L, disp);
+        lua_pushlstring(L, (const char *)rxbuf, rxlen);
+        return 2;
+    }
+
+    lua_pushnil(L);
+    lua_pushnil(L);
+    return 2;
+}
+
 static int l_utils_btoh(lua_State *L)
 {
     size_t len;
@@ -194,7 +276,6 @@ static int l_utils_btoh(lua_State *L)
     return 1;
 }
 
-/* sitool.utils.htob(hex_string) */
 static int l_utils_htob(lua_State *L)
 {
     const char *hexstr = luaL_checkstring(L, 1);
@@ -208,7 +289,6 @@ static int l_utils_htob(lua_State *L)
     return 1;
 }
 
-/* sitool.utils.hex(raw_string) */
 static int l_utils_hexdump(lua_State *L)
 {
     size_t len;
@@ -248,7 +328,6 @@ static int l_utils_hexdump(lua_State *L)
     return 1;
 }
 
-/* sitool.utils.atob(ascii_string) -> raw bytes */
 static int l_utils_atob(lua_State *L)
 {
     size_t len;
@@ -263,7 +342,6 @@ static int l_utils_atob(lua_State *L)
     return 1;
 }
 
-/* sitool.utils.btoa(raw_string) -> printable ASCII (non-printable -> '.') */
 static int l_utils_btoa(lua_State *L)
 {
     size_t len;
@@ -278,7 +356,6 @@ static int l_utils_btoa(lua_State *L)
     return 1;
 }
 
-/* global printf(fmt, ...) */
 static int l_printf(lua_State *L)
 {
     int nargs = lua_gettop(L);
@@ -301,7 +378,6 @@ static int l_printf(lua_State *L)
     return 0;
 }
 
-/* register sitool.* into a Lua state */
 static void register_api(lua_State *L, sitool_t *st)
 {
     lua_pushlightuserdata(L, st);
@@ -311,6 +387,15 @@ static void register_api(lua_State *L, sitool_t *st)
 
     lua_pushcfunction(L, l_send);
     lua_setfield(L, -2, "send");
+
+    lua_pushcfunction(L, l_write);
+    lua_setfield(L, -2, "write");
+
+    lua_pushcfunction(L, l_read);
+    lua_setfield(L, -2, "read");
+
+    lua_pushcfunction(L, l_poll);
+    lua_setfield(L, -2, "poll");
 
     lua_newtable(L);
     lua_pushcfunction(L, l_utils_btoh);
@@ -494,4 +579,16 @@ int handler_send_raw(sitool_t *st, const unsigned char *data, int len,
     if (w < 0) return -1;
     int r = serial_read(st->fd, resp, resp_max);
     return r;
+}
+
+int handler_write(sitool_t *st, const unsigned char *data, int len)
+{
+    if (st->fd < 0) return -1;
+    return serial_write(st->fd, data, len);
+}
+
+int handler_poll(sitool_t *st, unsigned char *buf, int max, int timeout_ms)
+{
+    if (st->fd < 0) return -1;
+    return serial_poll(st->fd, buf, max, timeout_ms);
 }

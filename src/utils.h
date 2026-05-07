@@ -86,7 +86,6 @@ static inline int parse_payload(const char *input,
 
     while (*p)
     {
-        /* skip separators */
         while (*p == ' ' || *p == '\t' || *p == ':') p++;
         if (*p == '\0') break;
 
@@ -104,7 +103,6 @@ static inline int parse_payload(const char *input,
             continue;
         }
 
-        /* hex byte */
         int hi = hexnib((unsigned char)*p);
         if (hi < 0) return -1;
         p++;
@@ -127,13 +125,11 @@ static inline int parse_args(char *str, char **argv)
     char *p = str;
     while (*p)
     {
-        /* skip leading whitespace */
         while (*p == ' ' || *p == '\t' || *p == '\n') p++;
         if (*p == '\0') break;
 
         if (*p == '"')
         {
-            /* quoted token: keep the quotes in the token */
             argv[argc++] = p;
             p++; /* skip opening quote */
             while (*p && *p != '"') p++;
@@ -144,7 +140,6 @@ static inline int parse_args(char *str, char **argv)
         }
         else
         {
-            /* normal unquoted token */
             argv[argc++] = p;
             while (*p && *p != ' ' && *p != '\t' && *p != '\n') p++;
             if (*p) *p++ = '\0';

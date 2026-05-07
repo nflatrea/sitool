@@ -4,6 +4,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#include <poll.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
 speed_t serial_i2speed(int baud)
 {
@@ -119,7 +122,7 @@ int serial_config(int fd, int baud, int databits, char parity, int stopbits)
                       
     tty.c_oflag &= ~OPOST;            /* raw output                  */
 
-    /* read behaviour: return after 1 s timeout or 1+ bytes */
+    /* return after 1 s timeout or 1+ bytes */
     tty.c_cc[VMIN]  = 0;
     tty.c_cc[VTIME] = 10;             /* 10 × 0.1 s = 1 s*/
 
@@ -150,4 +153,73 @@ int serial_read(int fd, void *buf, size_t len)
 void serial_close(int fd)
 {
     if (fd >= 0) close(fd);
+}
+
+int serial_poll(int fd, void *buf, size_t len, int timeout_ms)
+{
+    struct pollfd pfd;
+    pfd.fd     = fd;
+    pfd.events = POLLIN;
+
+    int ret = poll(&pfd, 1, timeout_ms);
+    if (ret < 0) {
+        perror("serial_poll");
+        return -1;
+    }
+    if (ret == 0) return 0; /* timeout, nothing available */
+
+    if (pfd.revents & POLLIN) {
+        ssize_t n = read(fd, buf, len);
+        if (n == -1) { perror("serial_poll: read"); return -1; }
+        return (int)n;
+    }
+
+    return 0;
+}
+
+int serial_list(serial_dev_t *list, int max)
+{
+    int count = 0;
+    DIR *d = opendir("/dev");
+    if (!d) return 0;
+
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL && count < max) {
+        const char *name = ent->d_name;
+
+        /* match ttyUSB*, ttyACM*, ttyS*, ttyAMA* */
+        if (strncmp(name, "ttyUSB", 6) == 0 ||
+            strncmp(name, "ttyACM", 6) == 0 ||
+            strncmp(name, "ttyAMA", 6) == 0 )
+            // strncmp(name, "ttyS",   4) == 0)		Garbage info but might be usefull....
+        {
+            snprintf(list[count].path, sizeof list[count].path,
+                     "/dev/%s", name);
+            count++;
+        }
+    }
+    closedir(d);
+	
+    /* also scan /dev/pts for pseudo-terminals (useful for testing) */
+	/* TODO: REMOVE, garbage info*/
+    // d = opendir("/dev/pts");
+    // if (d) {
+    //     while ((ent = readdir(d)) != NULL && count < max) {
+    //         const char *name = ent->d_name;
+    //         if (name[0] == '.' || strcmp(name, "ptmx") == 0)
+    //             continue;
+    //         /* only numeric entries */
+    //         int is_num = 1;
+    //         for (const char *c = name; *c; c++) {
+    //             if (*c < '0' || *c > '9') { is_num = 0; break; }
+    //         }
+    //         if (!is_num) continue;
+    //         snprintf(list[count].path, sizeof list[count].path,
+    //                  "/dev/pts/%s", name);
+    //         count++;
+    //     }
+    //     closedir(d);
+    // }
+
+    return count;
 }
