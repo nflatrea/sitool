@@ -20,7 +20,7 @@
 
     Serial Interface Toolkit v2.2.052026
 
-    Usage: ./sitool [-p PORT] [-b BAUDRATE] [-u HANDLER] [-h] [CMD ...]
+    Usage: ./sitool [-p PORT] [-b BAUDRATE] [-H HANDLER] [-h] [CMD ...]
 
       -p, --port      PORT       serial port  (e.g. /dev/ttyUSB0)
       -b, --baudrate  BAUDRATE   baud rate    (e.g. 9600, 115200)
