@@ -4,7 +4,7 @@
     | _ \  
     |___/eemo's  
     . . . . . . sitool  
-    . . . . . . Serial Interface Toolkit v2.0.052026  
+    . . . . . . Serial Interface Toolkit v2.2.052026  
     . . . . . . nflatrea@mailo.com <Noë Flatreaud>
 
     DESCRIPTION
@@ -18,7 +18,7 @@
     USAGE
     :::::
 
-    Serial Interface Toolkit v2.0.052026
+    Serial Interface Toolkit v2.2.052026
 
     Usage: ./sitool [-p PORT] [-b BAUDRATE] [-u HANDLER] [-h] [CMD ...]
 
@@ -45,7 +45,7 @@
       raw        Send raw payload (raw AA BB "TXT" ...)
       use        Load handler (use <name> | none)
       list       List resources (list handlers | list devices)
-      term       Raw terminal (Ctrl-C to quit)
+      term       Raw terminal (Ctrl-] to quit)
 
       Attributes: baudrate, databits, parity, stopbits, port, echo
 
@@ -59,17 +59,17 @@
     similar to picocom/minicom/screen. Stdin goes directly to
     the serial port, serial output goes to stdout.
 
-    Press Ctrl-C to quit back to the sitool prompt.
+    Press Ctrl-] (0x1D) to quit back to the sitool prompt.
 
     Local echo can be toggled with 'set echo on' / 'set echo off'.
 
       $ ./sitool -p /dev/ttyUSB0 -b 115200
       ttyUSB0> set echo on
       ttyUSB0> term
-      --- term (/dev/ttyUSB0 @ 115200 8N1) | echo on | Ctrl-C to quit ---
+      --- term (/dev/ttyUSB0 @ 115200 8N1) | echo on | Ctrl-] to quit ---
       hello
       OK
-      ^C
+      ^]
       --- term closed ---
       ttyUSB0>
 
