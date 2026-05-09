@@ -9,7 +9,7 @@ PREFIX   ?= /usr/local
 BINDIR   = $(PREFIX)/bin
 DATADIR  = $(PREFIX)/share/sitool
 
-SRC      = src/main.c src/serial.c src/sitool.c src/handler.c
+SRC      = src/main.c src/serial.c src/sitool.c src/handler.c src/mode.c
 OBJ      = $(SRC:.c=.o)
 BIN      = sitool
 

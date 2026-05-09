@@ -3,17 +3,7 @@
 
 #include <lua.h>
 
-#define SITOOL_VERSION "v2.2.052026"
-
-#define AUTO_MAX_RULES 16
-#define AUTO_MAX_LEN   256
-
-typedef struct {
-    unsigned char pattern[AUTO_MAX_LEN];
-    int           plen;
-    unsigned char response[AUTO_MAX_LEN];
-    int           rlen;
-} auto_rule_t;
+#define SITOOL_VERSION "v2.3.052026"
 
 typedef struct sitool sitool_t;
 
@@ -46,9 +36,6 @@ struct sitool
     lua_State *L;
     char       handler[128];
 
-    /* auto-answer rules */
-    auto_rule_t auto_rules[AUTO_MAX_RULES];
-    int         auto_nrules;
 };
 
 void sitool_init(sitool_t *st);
