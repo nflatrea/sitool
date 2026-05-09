@@ -5,6 +5,23 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* memmem: available on glibc with _DEFAULT_SOURCE.
+   Provide a fallback for other libcs (musl, BSD, etc). */
+#if !defined(__GLIBC__) && !defined(memmem)
+static inline void *si_memmem(const void *hay, size_t hlen,
+                              const void *needle, size_t nlen)
+{
+    if (nlen == 0) return (void *)hay;
+    if (nlen > hlen) return NULL;
+    const unsigned char *h = (const unsigned char *)hay;
+    const unsigned char *n = (const unsigned char *)needle;
+    for (size_t i = 0; i <= hlen - nlen; i++)
+        if (memcmp(h + i, n, nlen) == 0) return (void *)(h + i);
+    return NULL;
+}
+#define memmem si_memmem
+#endif
+
 static inline int hexnib(unsigned char);
 static inline int htob(const char*, unsigned char*,size_t);
 static inline int btoh(const unsigned char*, size_t, char*, size_t, char, int);

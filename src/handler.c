@@ -127,6 +127,10 @@ void handler_list_print(void)
 	sitool.write(payload_string)		Send payload without waiting for response
 	sitool.read()						Blocking read (uses VTIME timeout)
 	sitool.poll([timeout_ms])			Non-blocking read with optional timeout
+	sitool.signal(sig_id, state)		Set modem signal (SIG_DTR/SIG_RTS, bool)
+	sitool.get_signal(sig_id)			Get modem signal state -> bool
+	sitool.SIG_DTR						Signal constant for DTR line
+	sitool.SIG_RTS						Signal constant for RTS line
 	sitool.utils.btoh(raw_string)		Bytes to Hex
 	sitool.utils.htob(hex_string)		Hex to Bytes
 	sitool.utils.atob(ascii_string)		ASCII to Bytes
@@ -266,6 +270,46 @@ static int l_poll(lua_State *L)
     return 2;
 }
 
+static int l_signal(lua_State *L)
+{
+    sitool_t *st = get_st(L);
+    int sig   = (int)luaL_checkinteger(L, 1);
+    int state = lua_toboolean(L, 2);
+
+    if (st->fd < 0) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "not connected");
+        return 2;
+    }
+
+    if (serial_signal(st->fd, sig, state) < 0) {
+        lua_pushboolean(L, 0);
+        lua_pushstring(L, "signal control not supported");
+        return 2;
+    }
+    lua_pushboolean(L, 1);
+    return 1;
+}
+
+static int l_get_signal(lua_State *L)
+{
+    sitool_t *st = get_st(L);
+    int sig = (int)luaL_checkinteger(L, 1);
+
+    if (st->fd < 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+
+    int state = serial_get_signal(st->fd, sig);
+    if (state < 0) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushboolean(L, state);
+    return 1;
+}
+
 static int l_utils_btoh(lua_State *L)
 {
     size_t len;
@@ -397,6 +441,19 @@ static void register_api(lua_State *L, sitool_t *st)
     lua_pushcfunction(L, l_poll);
     lua_setfield(L, -2, "poll");
 
+    lua_pushcfunction(L, l_signal);
+    lua_setfield(L, -2, "signal");
+
+    lua_pushcfunction(L, l_get_signal);
+    lua_setfield(L, -2, "get_signal");
+
+    /* signal ID constants */
+    lua_pushinteger(L, SIG_DTR);
+    lua_setfield(L, -2, "SIG_DTR");
+
+    lua_pushinteger(L, SIG_RTS);
+    lua_setfield(L, -2, "SIG_RTS");
+
     lua_newtable(L);
     lua_pushcfunction(L, l_utils_btoh);
     lua_setfield(L, -2, "btoh");
@@ -429,6 +486,28 @@ static void call_callback(lua_State *L, const char *name)
     if (!lua_isfunction(L, -1)) { lua_pop(L, 3); return; }
 
     if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
+        fprintf(stderr, "[lua] %s: %s\n", name, lua_tostring(L, -1));
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 2);
+}
+
+/* call H.callbacks.<name>(raw_string) with binary data */
+static void call_callback_data(lua_State *L, const char *name,
+                               const unsigned char *data, int len)
+{
+    lua_getglobal(L, "H");
+    if (!lua_istable(L, -1)) { lua_pop(L, 1); return; }
+
+    lua_getfield(L, -1, "callbacks");
+    if (!lua_istable(L, -1)) { lua_pop(L, 2); return; }
+
+    lua_getfield(L, -1, name);
+    if (!lua_isfunction(L, -1)) { lua_pop(L, 3); return; }
+
+    lua_pushlstring(L, (const char *)data, len);
+
+    if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
         fprintf(stderr, "[lua] %s: %s\n", name, lua_tostring(L, -1));
         lua_pop(L, 1);
     }
@@ -591,4 +670,10 @@ int handler_poll(sitool_t *st, unsigned char *buf, int max, int timeout_ms)
 {
     if (st->fd < 0) return -1;
     return serial_poll(st->fd, buf, max, timeout_ms);
+}
+
+void handler_on_recv(sitool_t *st, const unsigned char *data, int len)
+{
+    if (!st->L) return;
+    call_callback_data(st->L, "on_recv", data, len);
 }

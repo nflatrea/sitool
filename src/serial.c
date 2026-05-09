@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 
 speed_t serial_i2speed(int baud)
 {
@@ -175,6 +176,24 @@ int serial_poll(int fd, void *buf, size_t len, int timeout_ms)
     }
 
     return 0;
+}
+
+int serial_signal(int fd, int sig, int state)
+{
+    if (fd < 0) return -1;
+    int req = state ? TIOCMBIS : TIOCMBIC;
+    if (ioctl(fd, req, &sig) < 0)
+        return -1;
+    return 0;
+}
+
+int serial_get_signal(int fd, int sig)
+{
+    if (fd < 0) return -1;
+    int status;
+    if (ioctl(fd, TIOCMGET, &status) < 0)
+        return -1;
+    return (status & sig) ? 1 : 0;
 }
 
 int serial_list(serial_dev_t *list, int max)

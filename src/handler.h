@@ -29,6 +29,8 @@ int  handler_write(sitool_t *st, const unsigned char
 	 *data, int len);
 int  handler_poll(sitool_t *st, unsigned char *buf,
 	 int max, int timeout_ms);
+void handler_on_recv(sitool_t *st, const unsigned char
+	 *data, int len);
 
 /*
 
@@ -82,6 +84,11 @@ handler_poll
 
   Non-blocking read with timeout in milliseconds.
   Returns number of bytes read, 0 if nothing, -1 on error.
+
+handler_on_recv
+
+  Dispatch received data to the Lua handler's on_recv callback.
+  No-op if no handler is loaded or no on_recv callback exists.
 
 */
 
