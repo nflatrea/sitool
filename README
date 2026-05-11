@@ -4,7 +4,7 @@
     | _ \  
     |___/eemo's  
     . . . . . . sitool  
-    . . . . . . Serial Interface Toolkit v2.2.052026  
+    . . . . . . Serial Interface Toolkit v2.3.052026  
     . . . . . . nflatrea@mailo.com <Noë Flatreaud>
 
     DESCRIPTION
@@ -18,7 +18,7 @@
     USAGE
     :::::
 
-    Serial Interface Toolkit v2.2.052026
+    Serial Interface Toolkit v2.3.052026
 
     Usage: ./sitool [-p PORT] [-b BAUDRATE] [-H HANDLER] [-h] [CMD ...]
 
@@ -45,9 +45,10 @@
       raw        Send raw payload (raw AA BB "TXT" ...)
       use        Load handler (use <name> | none)
       list       List resources (list handlers | list devices)
-      term       Raw terminal (Ctrl-] to quit)
+      term       Raw terminal (term [port]) Ctrl-] to quit
+      sniff      Passive listen (sniff [port]) Ctrl-] to quit
 
-      Attributes: baudrate, databits, parity, stopbits, port, echo
+      Attributes: baudrate, databits, parity, stopbits, port, echo, dtr, rts
 
     sitool>
 
@@ -74,6 +75,37 @@
       ttyUSB0>
 
 
+    SNIFF MODE
+    ::::::::::
+
+    Type 'sniff' to passively listen on the port. No keystrokes
+    are forwarded — it only displays incoming data.
+
+    Without a handler, frames are shown as timestamped hexdumps:
+
+      ttyUSB0> sniff
+      --- sniff (/dev/ttyUSB0 @ 9600 8N1) | Ctrl-] to quit ---
+      [14:32:01.042] (  6) 48 45 4C 4C 4F 0A  |HELLO.|
+      ^]
+      --- sniff closed ---
+
+    With a handler loaded, incoming data is passed to the
+    handler's on_recv callback for protocol-level dissection.
+
+
+    SIGNAL CONTROL
+    ::::::::::::::
+
+    DTR and RTS lines can be driven manually:
+
+      set dtr on       set dtr off
+      set rts on       set rts off
+
+    Signals are applied immediately if connected, or stored
+    and applied on the next open. 'get dtr' / 'get rts' reads
+    the live line state from the driver when connected.
+
+
     LUA HANDLER API
     ::::::::::::::::
 
@@ -84,6 +116,7 @@
       sitool.write(payload)            Send without waiting for response
       sitool.read()                    Blocking read (VTIME timeout)
       sitool.poll([timeout_ms])        Non-blocking read with timeout
+      sitool.signal(name, val)         Set DTR/RTS  (e.g. "dtr", 1)
       printf(fmt, ...)                 Formatted print (like C printf)
 
       sitool.utils.btoh(raw)           Bytes to hex string
@@ -94,6 +127,24 @@
 
     Payloads can be hex ("AA BB CC"), ASCII ("\"HELLO\""),
     or mixed ("02 10 \"HELLO\" FF").
+
+    Callbacks:
+
+      H.callbacks.on_recv(raw)         Called on incoming data (sniff mode)
+
+    Features like timed sends, auto-replies or pattern matching
+    belong in handlers, not in the core. See handlers/example.lua.
+
+
+    BUILD
+    :::::
+
+    $ git clone https://github.com/nflatrea/sitool.git
+    $ cd sitool
+    $ make
+    $ sudo make install
+
+    Dependencies: lua5.4, libreadline.
 
 
     LICENSE
