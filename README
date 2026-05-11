@@ -79,7 +79,7 @@
     ::::::::::
 
     Type 'sniff' to passively listen on the port. No keystrokes
-    are forwarded — it only displays incoming data.
+    are forwarded, only displays incoming data.
 
     Without a handler, frames are shown as timestamped hexdumps:
 
@@ -110,7 +110,12 @@
     ::::::::::::::::
 
     Handlers are Lua scripts that return a table with commands
-    and callbacks. The following API is available:
+    and callbacks. You can place you own in both :
+
+    D  ./handlers
+    D  ~/.local/share/sitool/handlers
+
+    Available API:
 
       sitool.send(payload)             Send + receive (sync)
       sitool.write(payload)            Send without waiting for response
