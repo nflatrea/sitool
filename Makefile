@@ -9,7 +9,10 @@ PREFIX   ?= /usr/local
 BINDIR   = $(PREFIX)/bin
 DATADIR  = $(PREFIX)/share/sitool
 
-SRC      = src/main.c src/serial.c src/sitool.c src/handler.c src/mode.c
+# Bake system handler path into the binary
+CFLAGS  += -DSITOOL_DATADIR=\"$(DATADIR)\"
+
+SRC      = src/main.c src/serial.c src/sitool.c src/handler.c src/mode.c src/utils.c
 OBJ      = $(SRC:.c=.o)
 BIN      = sitool
 

@@ -4,7 +4,7 @@
     | _ \  
     |___/eemo's  
     . . . . . . sitool  
-    . . . . . . Serial Interface Toolkit v2.3.052026  
+    . . . . . . Serial Interface Toolkit v2.5.052026  
     . . . . . . nflatrea@mailo.com <Noë Flatreaud>
 
     DESCRIPTION
@@ -18,7 +18,7 @@
     USAGE
     :::::
 
-    Serial Interface Toolkit v2.3.052026
+    Serial Interface Toolkit v2.5.052026
 
     Usage: ./sitool [-p PORT] [-b BAUDRATE] [-H HANDLER] [-h] [CMD ...]
 
@@ -41,10 +41,9 @@
       open       Open serial connection (ex. open /ttyUSB0)
       close      Close serial connection
       set        Set attribute  (set key value)
-      get        Get attribute  (get key | get all)
       raw        Send raw payload (raw AA BB "TXT" ...)
       use        Load handler (use <name> | none)
-      list       List resources (list handlers | list devices)
+      list       List resources (list options | list handlers | list devices | list all)
       term       Raw terminal (term [port]) Ctrl-] to quit
       sniff      Passive listen (sniff [port]) Ctrl-] to quit
 
@@ -113,7 +112,7 @@
     and callbacks. You can place you own in both :
 
     D  ./handlers
-    D  ~/.local/share/sitool/handlers
+    D  $(SITOOL_DATADIR)/handlers
 
     Available API:
 
@@ -137,9 +136,7 @@
 
       H.callbacks.on_recv(raw)         Called on incoming data (sniff mode)
 
-    Features like timed sends, auto-replies or pattern matching
-    belong in handlers, not in the core. See handlers/example.lua.
-
+    See handlers/example.lua for example.
 
     BUILD
     :::::

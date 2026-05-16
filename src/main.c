@@ -8,7 +8,7 @@
 static void usage(const char *prog)
 {
     printf("Serial Interface Toolkit %s\n\n", SITOOL_VERSION);
-    printf("Usage: %s [-p PORT] [-b BAUDRATE] [-u HANDLER] [-h] [CMD ...]\n\n", prog);
+    printf("Usage: %s [-p PORT] [-b BAUDRATE] [-H HANDLER] [-h] [CMD ...]\n\n", prog);
     printf("  -p, --port      PORT       serial port  (e.g. /dev/ttyUSB0)\n");
     printf("  -b, --baudrate  BAUDRATE   baud rate    (e.g. 9600, 115200)\n");
     printf("  -H, --handler   HANDLER    load Lua handler on start\n");
@@ -84,7 +84,7 @@ int main(int argc, char **argv)
 
     /* trailing CMD: eval and exit */
     if (cmd_start) {
-        char line[512];
+        char line[SITOOL_LINE];
         size_t pos = 0;
         for (int i = cmd_start; i < argc && pos < sizeof line - 2; i++) {
             if (i > cmd_start) line[pos++] = ' ';

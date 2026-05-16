@@ -4,9 +4,6 @@
 #include <dirent.h>
 #include <unistd.h>
 
-#include <readline/readline.h>
-#include <readline/history.h>
-
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
@@ -16,27 +13,37 @@
 #include "serial.h"
 #include "utils.h"
 
+#ifndef SITOOL_DATADIR
+#define SITOOL_DATADIR "/usr/local/share/sitool"
+#endif
+
+#define HANDLER_SEARCH_MAX 3
+
 static int get_search_paths(char paths[][HANDLER_PATH_MAX], int max)
-{   
-	if (max<=0) return 0;
-	
-	int n = 0;
+{
+    if (max <= 0) return 0;
+
+    int n = 0;
     strncpy(paths[n++], "./handlers", HANDLER_PATH_MAX);
-	if (n>= max) return n;
-	
-    const char *home = getenv("HOME");
-	if (home == NULL) return n;
-	
-	snprintf(paths[n++], HANDLER_PATH_MAX,
-		"%s/.local/share/sitool/handlers", home);
-		
+    if (n >= max) return n;
+
+    const char *datadir = getenv("SITOOL_DATADIR");
+    if (datadir) {
+        snprintf(paths[n++], HANDLER_PATH_MAX,
+            "%s/handlers", datadir);
+        if (n >= max) return n;
+    }
+
+    /* system-installed handlers (from make install) */
+    snprintf(paths[n++], HANDLER_PATH_MAX, "%s/handlers", SITOOL_DATADIR);
+
     return n;
 }
 
 int handler_resolve(const char *name, char *out, size_t max)
 {
-    char dirs[2][HANDLER_PATH_MAX];
-    int ndirs = get_search_paths(dirs, 2);
+    char dirs[HANDLER_SEARCH_MAX][HANDLER_PATH_MAX];
+    int ndirs = get_search_paths(dirs, HANDLER_SEARCH_MAX);
 
     for (int i = 0; i < ndirs; i++) {
         char path[HANDLER_PATH_MAX + 64];
@@ -62,7 +69,6 @@ static int scan_dir(const char *dirpath, handler_info_t *list,
         const char *fname = ent->d_name;
         size_t len = strlen(fname);
 
-		// take the filename without extention
         if (len < 5 || strcmp(fname + len - 4, ".lua") != 0)
             continue;
 
@@ -90,8 +96,8 @@ static int scan_dir(const char *dirpath, handler_info_t *list,
 
 int handler_list(handler_info_t *list, int max)
 {
-    char dirs[2][HANDLER_PATH_MAX];
-    int ndirs = get_search_paths(dirs, 2);
+    char dirs[HANDLER_SEARCH_MAX][HANDLER_PATH_MAX];
+    int ndirs = get_search_paths(dirs, HANDLER_SEARCH_MAX);
     int count = 0;
 
     for (int i = 0; i < ndirs; i++)
@@ -108,8 +114,8 @@ void handler_list_print(void)
     if (n == 0) {
         printf("  (no handlers found)\n");
         printf("  search paths:\n");
-        char dirs[2][HANDLER_PATH_MAX];
-        int ndirs = get_search_paths(dirs, 2);
+        char dirs[HANDLER_SEARCH_MAX][HANDLER_PATH_MAX];
+        int ndirs = get_search_paths(dirs, HANDLER_SEARCH_MAX);
         for (int i = 0; i < ndirs; i++)
             printf("    %s/\n", dirs[i]);
         return;
@@ -121,23 +127,23 @@ void handler_list_print(void)
 
 /*
 
-	Lua Bindings
+    Lua Bindings
 
-	sitool.send(payload_string) 		Send payload and await response (sync)
-	sitool.write(payload_string)		Send payload without waiting for response
-	sitool.read()						Blocking read (uses VTIME timeout)
-	sitool.poll([timeout_ms])			Non-blocking read with optional timeout
-	sitool.signal(sig_id, state)		Set modem signal (SIG_DTR/SIG_RTS, bool)
-	sitool.get_signal(sig_id)			Get modem signal state -> bool
-	sitool.SIG_DTR						Signal constant for DTR line
-	sitool.SIG_RTS						Signal constant for RTS line
-	sitool.utils.btoh(raw_string)		Bytes to Hex
-	sitool.utils.htob(hex_string)		Hex to Bytes
-	sitool.utils.atob(ascii_string)		ASCII to Bytes
-	sitool.utils.btoa(raw_string)		Bytes to printable ASCII
-	sitool.utils.hex(raw_string)		Hexdump
+    sitool.send(payload_string)        Send payload and await response (sync)
+    sitool.write(payload_string)       Send payload without waiting for response
+    sitool.read()                      Blocking read (uses VTIME timeout)
+    sitool.poll([timeout_ms])          Non-blocking read with optional timeout
+    sitool.signal(sig_id, state)       Set modem signal (SIG_DTR/SIG_RTS, bool)
+    sitool.get_signal(sig_id)          Get modem signal state -> bool
+    sitool.SIG_DTR                     Signal constant for DTR line
+    sitool.SIG_RTS                     Signal constant for RTS line
+    sitool.utils.btoh(raw_string)      Bytes to Hex
+    sitool.utils.htob(hex_string)      Hex to Bytes
+    sitool.utils.atob(ascii_string)    ASCII to Bytes
+    sitool.utils.btoa(raw_string)      Bytes to printable ASCII
+    sitool.utils.hex(raw_string)       Hexdump
 
-    H.callbacks.<name>() 				Call <name> if it exists
+    H.callbacks.<name>()               Call <name> if it exists
 
 */
 
@@ -162,18 +168,18 @@ static int l_send(lua_State *L)
         return 2;
     }
 
-    unsigned char txbuf[256];
+    unsigned char txbuf[SITOOL_MTU];
     int txlen = parse_payload(payload, txbuf, sizeof txbuf);
     if (txlen <= 0) {
         luaL_error(L, "sitool.send: invalid payload");
         return 0;
     }
 
-    char disp[768];
+    char disp[SITOOL_DISP];
     btoh(txbuf, txlen, disp, sizeof disp, ' ', 1);
     printf("TX >> %s\n", disp);
 
-    unsigned char rxbuf[256];
+    unsigned char rxbuf[SITOOL_MTU];
     int rxlen = handler_send_raw(st, txbuf, txlen, rxbuf, sizeof rxbuf);
 
     if (rxlen > 0) {
@@ -200,7 +206,7 @@ static int l_write(lua_State *L)
         return 1;
     }
 
-    unsigned char txbuf[256];
+    unsigned char txbuf[SITOOL_MTU];
     int txlen = parse_payload(payload, txbuf, sizeof txbuf);
     if (txlen <= 0) {
         luaL_error(L, "sitool.write: invalid payload");
@@ -227,11 +233,11 @@ static int l_read(lua_State *L)
         return 2;
     }
 
-    unsigned char rxbuf[256];
+    unsigned char rxbuf[SITOOL_MTU];
     int rxlen = serial_read(st->fd, rxbuf, sizeof rxbuf);
 
     if (rxlen > 0) {
-        char disp[768];
+        char disp[SITOOL_DISP];
         btoh(rxbuf, rxlen, disp, sizeof disp, ' ', 1);
         lua_pushstring(L, disp);
         lua_pushlstring(L, (const char *)rxbuf, rxlen);
@@ -254,11 +260,11 @@ static int l_poll(lua_State *L)
         return 2;
     }
 
-    unsigned char rxbuf[256];
+    unsigned char rxbuf[SITOOL_MTU];
     int rxlen = handler_poll(st, rxbuf, sizeof rxbuf, timeout_ms);
 
     if (rxlen > 0) {
-        char disp[768];
+        char disp[SITOOL_DISP];
         btoh(rxbuf, rxlen, disp, sizeof disp, ' ', 1);
         lua_pushstring(L, disp);
         lua_pushlstring(L, (const char *)rxbuf, rxlen);
@@ -314,7 +320,7 @@ static int l_utils_btoh(lua_State *L)
 {
     size_t len;
     const char *raw = luaL_checklstring(L, 1, &len);
-    char out[768];
+    char out[SITOOL_DISP];
     btoh((const unsigned char *)raw, len, out, sizeof out, ' ', 1);
     lua_pushstring(L, out);
     return 1;
@@ -323,7 +329,7 @@ static int l_utils_btoh(lua_State *L)
 static int l_utils_htob(lua_State *L)
 {
     const char *hexstr = luaL_checkstring(L, 1);
-    unsigned char out[256];
+    unsigned char out[SITOOL_MTU];
     int n = htob(hexstr, out, sizeof out);
     if (n < 0) {
         lua_pushnil(L);
@@ -376,7 +382,7 @@ static int l_utils_atob(lua_State *L)
 {
     size_t len;
     const char *ascii = luaL_checklstring(L, 1, &len);
-    unsigned char out[256];
+    unsigned char out[SITOOL_MTU];
     int n = atob(ascii, len, out, sizeof out);
     if (n < 0) {
         lua_pushnil(L);
@@ -390,7 +396,7 @@ static int l_utils_btoa(lua_State *L)
 {
     size_t len;
     const char *raw = luaL_checklstring(L, 1, &len);
-    char out[768];
+    char out[SITOOL_DISP];
     int n = btoa((const unsigned char *)raw, len, out, sizeof out);
     if (n < 0) {
         lua_pushnil(L);
@@ -514,7 +520,7 @@ static void call_callback_data(lua_State *L, const char *name,
     lua_pop(L, 2);
 }
 
-// Public load / unload / dispatch / help
+/* Public load / unload / dispatch / help */
 
 int handler_load(sitool_t *st, const char *name)
 {
@@ -591,7 +597,7 @@ int handler_dispatch(sitool_t *st, const char *cmd,
     lua_getfield(L, -1, "run");
     if (!lua_isfunction(L, -1)) { lua_pop(L, 4); return 0; }
 
-    char argstr[512] = "";
+    char argstr[SITOOL_LINE] = "";
     size_t pos = 0;
     for (int i = 1; i < argc && pos < sizeof argstr - 2; i++) {
         if (i > 1) argstr[pos++] = ' ';
@@ -656,8 +662,18 @@ int handler_send_raw(sitool_t *st, const unsigned char *data, int len,
     if (st->fd < 0) return -1;
     int w = serial_write(st->fd, data, len);
     if (w < 0) return -1;
-    int r = serial_read(st->fd, resp, resp_max);
-    return r;
+
+    /* drain loop: accumulate response until inter-byte silence */
+    int total = 0;
+    int timeout = 1000; /* first byte: wait up to 1s */
+    while (total < resp_max) {
+        int r = serial_poll(st->fd, resp + total, resp_max - total, timeout);
+        if (r < 0) return -1;
+        if (r == 0) break;   /* silence — response complete */
+        total += r;
+        timeout = 50;         /* subsequent bytes: 50ms inter-byte gap */
+    }
+    return total;
 }
 
 int handler_write(sitool_t *st, const unsigned char *data, int len)

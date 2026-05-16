@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <errno.h>
 #include <unistd.h>
 #include <poll.h>
 #include <termios.h>
@@ -37,7 +38,10 @@ int mode_run(sitool_t *st, const mode_opts_t *opts)
     while (running) {
         int ret = poll(fds, 2, opts->timeout_ms);
 
-        if (ret < 0) break;
+        if (ret < 0) {
+            if (errno == EINTR) continue;
+            break;
+        }
 
         if (ret == 0) {
             if (opts->on_tick)
@@ -46,7 +50,7 @@ int mode_run(sitool_t *st, const mode_opts_t *opts)
         }
 
         if (fds[1].revents & POLLIN) {
-            unsigned char buf[256];
+            unsigned char buf[SITOOL_MTU];
             ssize_t n = read(st->fd, buf, sizeof buf);
             if (n <= 0) break;
             if (opts->on_rx)

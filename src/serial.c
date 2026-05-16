@@ -11,9 +11,6 @@
 
 speed_t serial_i2speed(int baud)
 {
-	// Convert integer to speed_t	
-	// J'ai pas trouvé mieux pour l'instant...
-	
     switch (baud) {
     case 0:       return B0;
     case 50:      return B50;
@@ -52,7 +49,6 @@ speed_t serial_i2speed(int baud)
 
 int serial_open(const char *port)
 {
-	
     int fd = open(port, O_RDWR | O_NOCTTY | O_NDELAY);
     if (fd == -1) {
         perror("serial_open");
@@ -210,7 +206,6 @@ int serial_list(serial_dev_t *list, int max)
         if (strncmp(name, "ttyUSB", 6) == 0 ||
             strncmp(name, "ttyACM", 6) == 0 ||
             strncmp(name, "ttyAMA", 6) == 0 )
-            // strncmp(name, "ttyS",   4) == 0)		Garbage info but might be usefull....
         {
             snprintf(list[count].path, sizeof list[count].path,
                      "/dev/%s", name);
@@ -218,27 +213,6 @@ int serial_list(serial_dev_t *list, int max)
         }
     }
     closedir(d);
-	
-    /* also scan /dev/pts for pseudo-terminals (useful for testing) */
-	/* TODO: REMOVE, garbage info*/
-    // d = opendir("/dev/pts");
-    // if (d) {
-    //     while ((ent = readdir(d)) != NULL && count < max) {
-    //         const char *name = ent->d_name;
-    //         if (name[0] == '.' || strcmp(name, "ptmx") == 0)
-    //             continue;
-    //         /* only numeric entries */
-    //         int is_num = 1;
-    //         for (const char *c = name; *c; c++) {
-    //             if (*c < '0' || *c > '9') { is_num = 0; break; }
-    //         }
-    //         if (!is_num) continue;
-    //         snprintf(list[count].path, sizeof list[count].path,
-    //                  "/dev/pts/%s", name);
-    //         count++;
-    //     }
-    //     closedir(d);
-    // }
 
     return count;
 }
